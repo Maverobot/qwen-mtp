@@ -180,8 +180,8 @@ MTP with parallel slots. This repo therefore uses **one service**:
 ```
 
 `PARALLEL=2` is written to `~/.config/qwen36-mtp/env` by the installer and is
-also the default in `scripts/run.sh`. Tooling (omp, opencode, Copilot CLI) only
-needs `http://127.0.0.1:13636/v1`.
+also the default in `scripts/run.sh`. The OpenAI-compatible API is available
+at `http://127.0.0.1:13636/v1`.
 
 Install the unit template once (idempotent):
 
@@ -216,108 +216,6 @@ Measured no-MTP multi-slot numbers from the old fork-era profile were useful for
 the crossover decision, but upstream parallel MTP replaces that split. Re-run
 your local benchmark after migration if exact per-slot throughput matters.
 
-## Use with the GitHub Copilot CLI
-
-The `copilot-wrappers/` folder ships two scripts:
-
-- `copilot-local` — generic. Reads `COPILOT_LOCAL_{BASE_URL,MODEL,API_KEY,MAX_PROMPT_TOKENS,MAX_OUTPUT_TOKENS}` from env, exports them as `COPILOT_PROVIDER_*` / `COPILOT_MODEL`, then exec's `copilot "$@"`.
-- `copilot-qwen36-27b` — sets the env for this server and exec's `copilot-local`.
-
-Drop them into a directory on your `PATH` (e.g. `~/.local/bin/` or `~/.dotfiles/.scripts/`) and run:
-
-```bash
-copilot-qwen36-27b
-```
-
-To wrap another OpenAI-compatible provider, copy `copilot-qwen36-27b` and change
-the four env vars at the top.
-
-## Use with omp / opencode
-
-`copilot-wrappers/` also ships wrappers for two other agentic-coding harnesses:
-
-- `omp-qwen36-27b` — for [`@oh-my-pi/pi-coding-agent`](https://www.npmjs.com/package/@oh-my-pi/pi-coding-agent).
-- `opencode-qwen36-27b` — for [`opencode`](https://opencode.ai/).
-
-Both harnesses send **multiple `system` messages** per request (a coding system
-prompt + an environment block), but the Qwen3.6 chat template embedded in the
-GGUF rejects any system message after index 0:
-
-```
-Jinja Exception: System message must be at the beginning.
-```
-
-Rather than rebuild the GGUF, the wrappers route requests through
-`scripts/merge-sys-proxy.py` — a tiny ~120-line streaming HTTP proxy that:
-
-1. Merges all `role=system` messages into a single first system block.
-2. Injects `chat_template_kwargs.enable_thinking=false` by default (most coding
-   harnesses don't render `reasoning_content`, so they appear to hang while the
-   model writes a long internal chain of thought; callers can override by
-   sending their own `chat_template_kwargs`).
-
-There is a third subtle bug the proxy also fixes: **HTTP/1.1 framing for the
-SSE stream.** `llama-server` returns `Transfer-Encoding: chunked` for streaming
-responses; a naive proxy that copies the body but strips/forgets that header
-leaves the response with neither `Content-Length` nor `Transfer-Encoding` —
-which under HTTP/1.1 means "read until socket close". `curl` happens to be
-lenient and just stops at `data: [DONE]`, but opencode's fetch reader follows
-the spec and waits forever for the close that never comes (the connection is
-keep-alive). The proxy therefore re-emits its own `Transfer-Encoding: chunked`
-+ `Connection: close` and chunk-encodes each upstream read as
-`<hex-size>\r\n<data>\r\n`, terminated by `0\r\n\r\n`. Without this opencode
-hangs even though the server log shows a clean `200 OK`.
-
-Run them with no setup once the server is up:
-
-```bash
-omp-qwen36-27b -p "Reply with one word: pong"
-opencode-qwen36-27b run "Reply with one word: pong"
-```
-
-Each wrapper spawns its proxy on a **distinct port** so you can run several
-agents concurrently against the same llama-server on `:13636`:
-
-| Wrapper                       | Client       | Proxy port | Upstream |
-| ----------------------------- | ------------ | ---------: | -------- |
-| `copilot-qwen36-27b`          | Copilot CLI  |          — | `:13636` direct (Copilot CLI doesn't trip the multi-`system` bug) |
-| `copilot-qwen36-35b-a3b`      | Copilot CLI  |          — | `:13636` direct |
-| `omp-qwen36-27b`              | omp          |   **8091** | → `:13636` |
-| `opencode-qwen36-27b`         | opencode     |   **8092** | → `:13636` |
-| `omp-qwen36-35b-a3b`          | omp          |   **8093** | → `:13636` |
-| `opencode-qwen36-35b-a3b`     | opencode     |   **8094** | → `:13636` |
-
-So `:13636` is always the model server (one); the `:809x` ports are per-client
-adapter shims (one per harness × model). All the proxies forward to the same
-upstream — you can keep talking to the bare server on `:13636` (e.g. with
-`curl /v1/chat/completions` or the Copilot CLI wrappers) while omp and
-opencode each have their own merging-proxy lane.
-
-> **Tip — context window auto-detection.** Both omp and opencode wrappers
-> query `$UPSTREAM/props` at launch time and write the running server's
-> actual `n_ctx` (e.g. `131072`) into the harness's config: `models.yml` for
-> omp, the model's `limit.context` field for opencode. So if you change
-> `CTX_SIZE` in `~/.config/qwen36-mtp/env` and restart the server, the
-> harness's status-line context indicator follows automatically — no
-> manual edit needed. The opencode wrappers also set
-> `limit.output` (default 16384, override with `OPENCODE_OUTPUT_LIMIT`).
-
-Per-harness quirks the wrappers paper over:
-
-- **omp** auto-discovers `llama.cpp` providers and hard-codes them to
-  `api: openai-responses`, which doesn't match llama.cpp's `/chat/completions`
-  endpoint. The wrapper writes `~/.omp/agent/models.yml` with the correct
-  `api: openai-completions`, `auth: none`, and (if it exists) busts omp's
-  sqlite `model_cache` so a stale `baseUrl` from a previous run can't override
-  the new one.
-- **opencode** persists a lot of state (`~/.local/share/opencode/`,
-  `opencode.db`, snapshots, sessions). The wrapper sets
-  `OPENCODE_CONFIG_DIR=~/.config/qwen36-mtp/opencode` so it does not touch
-  your normal `~/.config/opencode/opencode.json` or merge with global plugins.
-  The `@ai-sdk/openai-compatible` provider opencode uses does not consult
-  llama-server's `n_ctx_train` or `/props.n_ctx`, so the wrapper injects
-  the schema's `limit: { context, output }` block on its behalf.
-
 ## Laptop profile (RTX 5070 Ti, 12 GB)
 
 For a Blackwell laptop GPU with 12 GB VRAM, `scripts/install-laptop.sh` +
@@ -345,8 +243,7 @@ from `mradermacher/Qwen3.6-35B-A3B-i1-GGUF` (`i1-Q4_K_S`, ~20 GiB):
 #### Measured numbers (RTX 5070 Ti laptop, Qwen3.6-35B-A3B i1-Q4_K_S)
 
 Server response timings via `llama-server`'s `/completion` endpoint
-(`temperature=0`, `cache_prompt=false` unless noted), wrapped in the omp/opencode
-launchers from `copilot-wrappers/`:
+(`temperature=0`, `cache_prompt=false` unless noted):
 
 | prompt | decode | prefill (cold) | wall |
 | ---: | ---: | ---: | ---: |
@@ -446,10 +343,6 @@ systemctl --user daemon-reload
 systemctl --user start qwen36-laptop
 journalctl --user -fu qwen36-laptop
 ```
-
-The omp/opencode wrappers above work unchanged against the laptop server —
-just start the laptop server on `:13636` and the wrappers' built-in proxies
-will spawn on `:8091`/`:8092` as usual.
 
 ## Thinking mode
 

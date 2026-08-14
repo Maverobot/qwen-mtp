@@ -183,15 +183,5 @@ N_CPU_MOE=40
 EOF
 log "Wrote $ENV_FILE"
 
-# ---------- 7. symlink copilot-wrappers into ~/.local/bin ------------------
-LOCAL_BIN="$HOME/.local/bin"
-mkdir -p "$LOCAL_BIN"
-log "Symlinking copilot-wrappers -> $LOCAL_BIN"
-for _src in "$REPO_DIR/copilot-wrappers"/*; do
-  _dst="$LOCAL_BIN/$(basename "$_src")"
-  ln -sf "$_src" "$_dst"
-  log "  $_dst"
-done
-
 log "Done. Start the server with:"
 echo "  set -a; source $ENV_FILE; set +a; $(dirname "$0")/run-laptop.sh"
