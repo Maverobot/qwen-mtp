@@ -195,8 +195,8 @@ mkdir -p "$(dirname "$SVC")"
 cat > "$SVC" <<EOF
 [Unit]
 Description=Qwen3.6-27B MTP llama-server (RTX 4090, parallel=$PARALLEL)
-After=network-online.target
-Conflicts=qwen36-multi.service
+After=network-online.target qwen38.service
+Conflicts=qwen36-multi.service qwen38.service
 
 [Service]
 Type=simple

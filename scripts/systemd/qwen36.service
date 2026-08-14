@@ -1,14 +1,14 @@
 [Unit]
 Description=Qwen3.6-27B MTP llama-server (RTX 4090, parallel=2)
-After=network-online.target
-Conflicts=qwen36-multi.service
+After=network-online.target qwen38.service
+Conflicts=qwen36-multi.service qwen38.service
 
 [Service]
 Type=simple
-EnvironmentFile=/home/zheng/.config/qwen36-mtp/env
+EnvironmentFile=%h/.config/qwen36-mtp/env
 Environment=CUDA_VISIBLE_DEVICES=0
 Environment=GGML_CUDA_ENABLE_UNIFIED_MEMORY=0
-ExecStart=/home/zheng/Dev/qwen36-mtp/scripts/run.sh
+ExecStart=%h/Dev/qwen36-mtp/scripts/run.sh
 Restart=on-failure
 RestartSec=5
 

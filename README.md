@@ -86,6 +86,115 @@ cd qwen36-mtp
 ./scripts/install.sh
 ```
 
+### Qwen3.8-27B alongside Qwen3.6
+
+Install Qwen3.8 without replacing the Qwen3.6 profile:
+
+```bash
+./scripts/install-qwen38.sh
+```
+
+The installer reuses `$HOME/Dev/qwen36/llama.cpp`, its CUDA build environment,
+and the `qwen36-hf` download environment. It first rejects tracked or staged
+changes in the shared checkout, then updates that checkout to current upstream
+`master`, verifies it is at least llama.cpp `b10419`, and rebuilds it before
+downloading Bartowski's `Qwen3.8-27B-Q4_K_M.gguf` into a separate model
+directory. The Qwen3.8 GGUF includes its MTP layers; the launcher enables them
+with `--spec-type draft-mtp`.
+
+The initial RTX 4090 profile is deliberately conservative:
+
+| Setting | Default |
+| --- | ---: |
+| Local Pi endpoint | `http://127.0.0.1:13838/v1` |
+| LAN endpoint | `http://<pc-lan-ip>:13838/v1` |
+| Model alias | `qwen3.8-27b` |
+| Context | 65,536 |
+| Parallel slots | 1 |
+| MTP draft tokens | 3 |
+| KV cache | Q4_0 |
+
+Both dense 27B models are installed but cannot run simultaneously on the 24 GB
+GPU. The `qwen36`, `qwen36-multi`, and `qwen38` units conflict and are ordered
+so that systemd stops the active model before allocating memory for the other:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user start qwen38  # stops qwen36/qwen36-multi if needed
+systemctl --user start qwen36  # stops qwen38 if needed
+```
+
+`qwen38` is left disabled after installation, just like `qwen36`. Its separate
+runtime settings are in `~/.config/qwen36-mtp/qwen38.env`; edit that file and
+restart `qwen38` only after a local VRAM fit test proves that a larger context
+or more parallel slots is safe.
+
+The service intentionally uses `HOST=0.0.0.0`. Port 13838 is
+**unauthenticated** and therefore reachable from permitted LAN interfaces and
+firewall rules at `http://<pc-lan-ip>:13838/v1`. Keep local Pi configured with
+`127.0.0.1`, and do not expose this port outside a trusted network without
+adding access controls separately.
+
+For direct use with Pi, add the distinct `llamacpp-qwen38` provider to
+`~/.pi/agent/models.json` (merge it with any existing providers, including a
+Qwen3.6 `llamacpp` provider):
+
+```json
+{
+  "providers": {
+    "llamacpp-qwen38": {
+      "baseUrl": "http://127.0.0.1:13838/v1",
+      "api": "openai-completions",
+      "apiKey": "none",
+      "models": [
+        {
+          "id": "qwen3.8-27b",
+          "name": "Qwen 3.8 27B (Q4_K_M, llama.cpp)",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": null,
+            "low": "low",
+            "medium": "medium",
+            "high": "xhigh",
+            "xhigh": "xhigh",
+            "max": null
+          },
+          "input": ["text"],
+          "contextWindow": 65536,
+          "maxTokens": 16384,
+          "compat": {
+            "thinkingFormat": "chat-template",
+            "chatTemplateKwargs": {
+              "enable_thinking": {"$var": "thinking.enabled"},
+              "preserve_thinking": true,
+              "reasoning_effort": {
+                "$var": "thinking.effort",
+                "omitWhenOff": true
+              }
+            },
+            "supportsDeveloperRole": false
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+Pi's `off` level disables thinking. Its `low` and `medium` levels map directly
+to Qwen3.8, while `high` and `xhigh` both request Qwen's valid `xhigh` effort.
+Unsupported `minimal` and `max` are hidden. The model rejects a `developer`
+message role, so the Pi entry explicitly marks developer-role support as false.
+
+The full endpoint remains available for scripts and other OpenAI-compatible
+clients:
+
+```bash
+curl -s http://127.0.0.1:13838/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"qwen3.8-27b","messages":[{"role":"user","content":"reply: pong"}]}'
+```
+
 If you previously installed the old `crucible-mtp` fork, stop the service and
 rerun the installer. It fetches `ggml-org/llama.cpp` into the existing checkout,
 leaves old fork branches intact, and builds detached upstream `master`:
