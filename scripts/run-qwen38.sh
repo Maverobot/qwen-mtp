@@ -8,7 +8,7 @@
 #   LLAMA_BIN        Absolute path to llama-server binary
 #   MODEL_PATH       Absolute path to the GGUF
 # Optional env (with defaults):
-#   CTX_SIZE         65536
+#   CTX_SIZE         98304
 #   PORT             13838
 #   HOST             0.0.0.0
 #   ALIAS            qwen3.8-27b
@@ -27,7 +27,7 @@ set -e
 : "${LLAMA_BIN:?LLAMA_BIN env var is required}"
 : "${MODEL_PATH:?MODEL_PATH env var is required}"
 
-CTX_SIZE="${CTX_SIZE:-65536}"
+CTX_SIZE="${CTX_SIZE:-98304}"
 PORT="${PORT:-13838}"
 HOST="${HOST:-0.0.0.0}"
 ALIAS="${ALIAS:-qwen3.8-27b}"

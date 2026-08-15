@@ -21,7 +21,7 @@ HF_ENV="${HF_ENV:-qwen36-hf}"
 BUILD_ENV="${BUILD_ENV:-qwen36-build}"
 CUDA_LABEL="${CUDA_LABEL:-cuda-12.4.1}"
 CUDA_ARCH="${CUDA_ARCH:-89}"
-CTX_SIZE="${CTX_SIZE:-65536}"
+CTX_SIZE="${CTX_SIZE:-98304}"
 PARALLEL="${PARALLEL:-1}"
 PORT="${PORT:-13838}"
 JOBS="$(nproc)"
@@ -223,8 +223,10 @@ Smoke test:
     -d '{"model":"qwen3.8-27b","messages":[{"role":"user","content":"reply: pong"}]}' | jq .
 
 Caveats:
-  * The 65,536 context / one-slot default is deliberately conservative for a
-    24 GB RTX 4090. Raise context or parallelism only after measuring VRAM.
+  * The 98,304 context / one-slot default passed a 90%-full-context stress
+    test and retained at least 2 GiB of total free VRAM after a 192-token
+    completion on a 24 GB RTX 4090. Raise context or parallelism only after
+    measuring VRAM.
   * Thinking is on by default. --reasoning-format deepseek keeps <think> in
     response.reasoning_content. Disable per request with
     chat_template_kwargs={"enable_thinking":false}.

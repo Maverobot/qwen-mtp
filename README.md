@@ -16,7 +16,7 @@ build but keep their model weights, endpoints, and launch settings separate.
 | --- | --- |
 | Dense Qwen3.6 or Qwen3.8 on 24 GB | separate 27B Q4 profiles with quantized KV caches |
 | Fast decode | embedded NextN/MTP speculative decoding through upstream llama.cpp |
-| Large context with safer 24 GB headroom | 131K default, configurable to ≥196K thanks to hybrid GatedDeltaNet + GatedAttention layout |
+| Large context with balanced 24 GB headroom | Qwen3.8 98K default selected by a 2 GiB near-full-context VRAM policy |
 | Strong prefix caching | upstream `--cache-idle-slots`, `--ctx-checkpoints`, KV-slot save/restore |
 | OpenAI-compatible | `llama-server` with `--jinja` and `--reasoning-format deepseek` |
 | Tool-calling | `--jinja` enables Qwen's tool-call template; LiteLLM in front recommended for heavy agents |
@@ -31,9 +31,29 @@ The initial Qwen3.8 profile was verified with a 192-token non-thinking response:
 | ---: | ---: | ---: | ---: | ---: | ---: |
 | 65 536 | 1 | **98.6 tok/s** | 167.7 tok/s | 130/182 (71.4%) | 19.0 GiB |
 
-This is a short functional and throughput smoke test, not a long-context
-benchmark. A larger default should be selected only after filling candidate
-contexts and measuring steady-state VRAM headroom.
+This is the historical short functional and throughput smoke baseline, not a
+long-context benchmark.
+
+### Qwen3.8-27B Q4_K_M context stress test
+
+On 2026-08-15, each request used a cold, non-thinking `/completion` call with
+an exact token-array prompt at 90% of the advertised context, `n_predict=256`,
+`cache_prompt=false`, and `ignore_eos=true`. GPU memory was sampled throughout
+prefill and decode. The balanced policy requires at least **2 GiB (2048 MiB)**
+free both after load and at the request's worst observed point, including
+retained steady-state allocations after inference. Although 131,072 passed its
+near-full request, its required 192-token post-completion check later left only
+1,701 MiB total free, so it was rejected. 163,840 also failed the policy, and
+higher candidates were not run. **98,304** is the selected Qwen3.8 default.
+Its final 192-token check had 2,349 MiB free after load and a 2,262 MiB minimum
+through completion plus a 20-second idle settle.
+
+| ctx | near-full prompt | decode | prefill | MTP accept | worst GPU used / free | result |
+| ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 98,304 | 88,473 | 81.24 tok/s | 1,920.75 tok/s | 191/191 (100.0%) | 21,174 / 3,034 MiB | pass; final 192-token settle min 2,262 MiB free |
+| 131,072 | 117,964 | 72.40 tok/s | 1,739.39 tok/s | 191/191 (100.0%) | 21,990 / 2,218 MiB | fail: final retained free 1,701 MiB |
+| 163,840 | 147,456 | 65.06 tok/s | 1,570.20 tok/s | 191/191 (100.0%) | 23,074 / 1,135 MiB | fail: <2 GiB free |
+| 196,608 | — | — | — | — | — | not run after 163,840 failed |
 
 ### Qwen3.6-27B profiles
 
@@ -127,14 +147,14 @@ downloading Bartowski's `Qwen3.8-27B-Q4_K_M.gguf` into a separate model
 directory. The Qwen3.8 GGUF includes its MTP layers; the launcher enables them
 with `--spec-type draft-mtp`.
 
-The initial RTX 4090 profile is deliberately conservative:
+The selected RTX 4090 profile uses the empirically validated balanced context:
 
 | Setting | Default |
 | --- | ---: |
 | Local Pi endpoint | `http://127.0.0.1:13838/v1` |
 | LAN endpoint | `http://<pc-lan-ip>:13838/v1` |
 | Model alias | `qwen3.8-27b` |
-| Context | 65,536 |
+| Context | 98,304 |
 | Parallel slots | 1 |
 | MTP draft tokens | 3 |
 | KV cache | Q4_0 |
@@ -186,7 +206,7 @@ Qwen3.6 `llamacpp` provider):
             "max": null
           },
           "input": ["text"],
-          "contextWindow": 65536,
+          "contextWindow": 98304,
           "maxTokens": 16384,
           "compat": {
             "thinkingFormat": "chat-template",
