@@ -1,21 +1,21 @@
 # qwen-mtp
 
-High-performance local serving of **Qwen3.6 with Multi-Token Prediction (MTP)**
-on a single 24 GB consumer GPU (tested on RTX 4090; should also work on RTX 3090
-with `CUDA_ARCH=86`).
+High-performance local serving of **Qwen3.6 and Qwen3.8 with Multi-Token
+Prediction (MTP)** on a single 24 GB consumer GPU (tested on RTX 4090; the
+Qwen3.6 desktop profile should also work on RTX 3090 with `CUDA_ARCH=86`).
 
-The point of this repo is to capture the *exact* recipe — upstream
-[llama.cpp](https://github.com/ggml-org/llama.cpp) with merged MTP support,
-MTP-preserving GGUF, CUDA-toolkit-via-conda, shared-cudart link fix, sane launch
-flags — so that a fresh box can go from zero to a working OpenAI-compatible
-endpoint with one command.
+This repo captures reproducible profiles built on stock upstream
+[llama.cpp](https://github.com/ggml-org/llama.cpp): MTP-preserving GGUFs,
+CUDA-toolkit-via-conda, the shared-cudart link fix, separate runtime configs,
+and switchable systemd services. Qwen3.6 and Qwen3.8 share one llama.cpp CUDA
+build but keep their model weights, endpoints, and launch settings separate.
 
 ## Why this stack?
 
 | Need | What this repo gives you |
 | --- | --- |
-| Real Qwen3.6 quality on 24 GB | dense 27B (or 35B-class with the right GGUF), q4 weights, q4 KV cache |
-| 100+ tok/s decode | NextN/MTP speculative decoding (~3× over no-MTP) |
+| Dense Qwen3.6 or Qwen3.8 on 24 GB | separate 27B Q4 profiles with quantized KV caches |
+| Fast decode | embedded NextN/MTP speculative decoding through upstream llama.cpp |
 | Large context with safer 24 GB headroom | 131K default, configurable to ≥196K thanks to hybrid GatedDeltaNet + GatedAttention layout |
 | Strong prefix caching | upstream `--cache-idle-slots`, `--ctx-checkpoints`, KV-slot save/restore |
 | OpenAI-compatible | `llama-server` with `--jinja` and `--reasoning-format deepseek` |
@@ -23,13 +23,29 @@ endpoint with one command.
 
 ## Measured numbers (RTX 4090, selected profiles)
 
-The default is the quality-first/headroom profile: `CTX_SIZE=131072` and
-`PARALLEL=2`, now using Unsloth's MTP-preserving `IQ4_NL` GGUF. A local smoke
-test with this quant loaded and answered at 131K/parallel=2 with 20.7 GB
-nvidia-smi used after a short chat completion. Re-run throughput benchmarks
-locally before relying on exact tok/s for this quant.
+### Qwen3.8-27B Q4_K_M smoke result
 
-Historical selected-profile numbers from the previous `IQ4_XS` default:
+The initial Qwen3.8 profile was verified with a 192-token non-thinking response:
+
+| ctx | parallel | decode | prefill | MTP accept | VRAM |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 65 536 | 1 | **98.6 tok/s** | 167.7 tok/s | 130/182 (71.4%) | 19.0 GiB |
+
+This is a short functional and throughput smoke test, not a long-context
+benchmark. A larger default should be selected only after filling candidate
+contexts and measuring steady-state VRAM headroom.
+
+### Qwen3.6-27B profiles
+
+The Qwen3.6 desktop default is the quality-first/headroom profile:
+`CTX_SIZE=131072` and `PARALLEL=2`, using Unsloth's MTP-preserving `IQ4_NL`
+GGUF. A local smoke test with this quant loaded and answered at
+131K/parallel=2 with 20.7 GB nvidia-smi used after a short chat completion.
+Re-run throughput benchmarks locally before relying on exact tok/s for this
+quant.
+
+Historical Qwen3.6 selected-profile numbers from the previous `IQ4_XS`
+default:
 
 | ctx | parallel | decode | prefill | MTP accept | VRAM |
 | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -83,12 +99,21 @@ env, so a "driver-only" Linux box works.
 ```bash
 git clone https://github.com/Maverobot/qwen-mtp.git
 cd qwen-mtp
-./scripts/install.sh
 ```
 
-### Qwen3.8-27B alongside Qwen3.6
+Choose the profile you want to install:
 
-Install Qwen3.8 without replacing the Qwen3.6 profile:
+| Profile | Installer | Service | Default endpoint |
+| --- | --- | --- | --- |
+| Qwen3.6-27B MTP | `./scripts/install.sh` | `qwen36` | `http://127.0.0.1:13636/v1` |
+| Qwen3.8-27B MTP | `./scripts/install-qwen38.sh` | `qwen38` | `http://127.0.0.1:13838/v1` |
+| Qwen3.6-35B-A3B laptop | `./scripts/install-laptop.sh` | manual/optional | `http://127.0.0.1:13636/v1` |
+
+### Qwen3.8-27B extension
+
+The Qwen3.8 extension adds its own installer, launcher, runtime config, systemd
+service, model alias, and documented Pi provider configuration while preserving
+the existing Qwen3.6 profiles. Install it with:
 
 ```bash
 ./scripts/install-qwen38.sh
@@ -114,9 +139,10 @@ The initial RTX 4090 profile is deliberately conservative:
 | MTP draft tokens | 3 |
 | KV cache | Q4_0 |
 
-Both dense 27B models are installed but cannot run simultaneously on the 24 GB
-GPU. The `qwen36`, `qwen36-multi`, and `qwen38` units conflict and are ordered
-so that systemd stops the active model before allocating memory for the other:
+If both dense 27B profiles are installed, they cannot run simultaneously on a
+24 GB GPU. The `qwen36`, `qwen36-multi`, and `qwen38` units conflict and are
+ordered so that systemd stops the active model before allocating memory for
+the other:
 
 ```bash
 systemctl --user daemon-reload
@@ -130,10 +156,10 @@ restart `qwen38` only after a local VRAM fit test proves that a larger context
 or more parallel slots is safe.
 
 The service intentionally uses `HOST=0.0.0.0`. Port 13838 is
-**unauthenticated** and therefore reachable from permitted LAN interfaces and
-firewall rules at `http://<pc-lan-ip>:13838/v1`. Keep local Pi configured with
-`127.0.0.1`, and do not expose this port outside a trusted network without
-adding access controls separately.
+**unauthenticated** and therefore reachable through permitted LAN and Tailscale
+interfaces at `http://<pc-lan-or-tailscale-ip>:13838/v1`. Keep local Pi
+configured with `127.0.0.1`, and do not expose this port outside a trusted
+network without adding access controls separately.
 
 For direct use with Pi, add the distinct `llamacpp-qwen38` provider to
 `~/.pi/agent/models.json` (merge it with any existing providers, including a
@@ -488,7 +514,8 @@ modest.
 ## Credits
 
 - Upstream MTP support: [`ggml-org/llama.cpp#22673`](https://github.com/ggml-org/llama.cpp/pull/22673)
-- MTP-preserving GGUF: [`unsloth/Qwen3.6-27B-MTP-GGUF`](https://huggingface.co/unsloth/Qwen3.6-27B-MTP-GGUF) (`Qwen3.6-27B-IQ4_NL.gguf`)
+- Qwen3.6 MTP-preserving GGUF: [`unsloth/Qwen3.6-27B-MTP-GGUF`](https://huggingface.co/unsloth/Qwen3.6-27B-MTP-GGUF) (`Qwen3.6-27B-IQ4_NL.gguf`)
+- Qwen3.8 GGUF: [`bartowski/Qwen3.8-27B-GGUF`](https://huggingface.co/bartowski/Qwen3.8-27B-GGUF) (`Qwen3.8-27B-Q4_K_M.gguf`)
 - Reference recipe + 100 tok/s claim: noonghunna's `qwen36-27b-single-3090` writeup
 
 ## License
