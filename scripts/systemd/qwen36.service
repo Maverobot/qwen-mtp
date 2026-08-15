@@ -5,10 +5,10 @@ Conflicts=qwen36-multi.service qwen38.service
 
 [Service]
 Type=simple
-EnvironmentFile=%h/.config/qwen36-mtp/env
+EnvironmentFile=%h/.config/qwen-mtp/env
 Environment=CUDA_VISIBLE_DEVICES=0
 Environment=GGML_CUDA_ENABLE_UNIFIED_MEMORY=0
-ExecStart=%h/Dev/qwen36-mtp/scripts/run.sh
+ExecStart=%h/Dev/qwen-mtp/scripts/run.sh
 Restart=on-failure
 RestartSec=5
 

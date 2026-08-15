@@ -2,7 +2,7 @@
 # Launch Qwen3.6-35B-A3B (MoE, 40 layers, 3B active) on a single
 # RTX 5070 Ti laptop (12 GB VRAM, sm_120 / Blackwell). Designed to be
 # invoked directly by systemd or by hand. All paths come from environment
-# variables (see ~/.config/qwen36-mtp/laptop.env which install-laptop.sh
+# variables (see ~/.config/qwen-mtp/laptop.env which install-laptop.sh
 # writes).
 #
 # Required env:

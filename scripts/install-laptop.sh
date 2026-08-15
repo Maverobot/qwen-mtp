@@ -164,7 +164,7 @@ LLAMA_BIN="$LLAMA_DIR/build/bin/llama-server"
 [[ -x "$LLAMA_BIN" ]] || die "llama-server not built"
 
 # ---------- 6. write env file ----------------------------------------------
-ENV_DIR="$HOME/.config/qwen36-mtp"
+ENV_DIR="$HOME/.config/qwen-mtp"
 ENV_FILE="$ENV_DIR/laptop.env"
 mkdir -p "$ENV_DIR"
 SLOT_CACHE_DIR="$PREFIX/slot-cache"

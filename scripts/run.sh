@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Launch Qwen3.6-27B-MTP with upstream llama.cpp. Designed to be invoked
 # directly by systemd or by hand. All paths come from environment variables
-# (see ~/.config/qwen36-mtp/env for the canonical config; the installer writes
+# (see ~/.config/qwen-mtp/env for the canonical config; the installer writes
 # that file).
 #
 # Required env:

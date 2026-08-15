@@ -1,4 +1,4 @@
-# qwen36-mtp
+# qwen-mtp
 
 High-performance local serving of **Qwen3.6 with Multi-Token Prediction (MTP)**
 on a single 24 GB consumer GPU (tested on RTX 4090; should also work on RTX 3090
@@ -81,8 +81,8 @@ Mamba). Nothing else. The installer fetches its own CUDA toolkit into a conda
 env, so a "driver-only" Linux box works.
 
 ```bash
-git clone https://github.com/Maverobot/qwen36-mtp.git
-cd qwen36-mtp
+git clone https://github.com/Maverobot/qwen-mtp.git
+cd qwen-mtp
 ./scripts/install.sh
 ```
 
@@ -125,7 +125,7 @@ systemctl --user start qwen36  # stops qwen38 if needed
 ```
 
 `qwen38` is left disabled after installation, just like `qwen36`. Its separate
-runtime settings are in `~/.config/qwen36-mtp/qwen38.env`; edit that file and
+runtime settings are in `~/.config/qwen-mtp/qwen38.env`; edit that file and
 restart `qwen38` only after a local VRAM fit test proves that a larger context
 or more parallel slots is safe.
 
@@ -234,7 +234,7 @@ The script creates:
 - `$PREFIX/llama.cpp/build/bin/llama-server` — upstream-built binary
 - `$PREFIX/models/qwen36-27b-mtp/Qwen3.6-27B-IQ4_NL.gguf` — ~15.2 GiB
 - `$PREFIX/slot-cache/` — on-disk slot KV cache (auto-save/restore across restarts)
-- `~/.config/qwen36-mtp/env` — runtime config (paths, ctx size, port, …)
+- `~/.config/qwen-mtp/env` — runtime config (paths, ctx size, port, …)
 - `~/.config/systemd/user/qwen36.service` — MTP parallel unit; ExecStart points
   at `scripts/run.sh` *in this repo* so `git pull` updates the launcher.
 
@@ -251,14 +251,14 @@ MTP + `PARALLEL=4` path and prints a deprecation warning.
 $REPO/scripts/run.sh                  ← versioned, edit here
         │ reads
         ▼
-~/.config/qwen36-mtp/env              ← per-host paths/tunables
+~/.config/qwen-mtp/env              ← per-host paths/tunables
         │ pointing at
         ▼
 llama-server binary + GGUF
 ```
 
 Edit the launcher? `git pull` and `systemctl --user restart qwen36`.
-Change ctx size or port? Edit `~/.config/qwen36-mtp/env` and restart.
+Change ctx size or port? Edit `~/.config/qwen-mtp/env` and restart.
 
 ## Run
 
@@ -288,7 +288,7 @@ MTP with parallel slots. This repo therefore uses **one service**:
 --spec-type draft-mtp --spec-draft-n-max 4 --parallel 2 --kv-unified
 ```
 
-`PARALLEL=2` is written to `~/.config/qwen36-mtp/env` by the installer and is
+`PARALLEL=2` is written to `~/.config/qwen-mtp/env` by the installer and is
 also the default in `scripts/run.sh`. The OpenAI-compatible API is available
 at `http://127.0.0.1:13636/v1`.
 
@@ -301,7 +301,7 @@ systemctl --user daemon-reload
 systemctl --user start qwen36
 ```
 
-Tune slots by editing `PARALLEL` in `~/.config/qwen36-mtp/env` and restarting:
+Tune slots by editing `PARALLEL` in `~/.config/qwen-mtp/env` and restarting:
 
 ```bash
 PARALLEL=1   # lowest memory / old single-slot behavior
@@ -394,21 +394,21 @@ fit even a 27B-Q4 model into.
 **1. Install once on the laptop:**
 
 ```bash
-git clone https://github.com/Maverobot/qwen36-mtp ~/Dev/qwen36-mtp
-cd ~/Dev/qwen36-mtp
+git clone https://github.com/Maverobot/qwen-mtp ~/Dev/qwen-mtp
+cd ~/Dev/qwen-mtp
 bash scripts/install-laptop.sh
 ```
 
 This installs miniconda's CUDA 12.8.1 toolkit into a dedicated env, builds
 llama.cpp with `CUDA_ARCH=120`, downloads the GGUF (~20 GiB) via `hf` +
-`hf_transfer`, and writes `~/.config/qwen36-mtp/laptop.env` with `LLAMA_BIN`
+`hf_transfer`, and writes `~/.config/qwen-mtp/laptop.env` with `LLAMA_BIN`
 and `MODEL_PATH` filled in.
 
 **2. Run the server:**
 
 ```bash
-set -a; source ~/.config/qwen36-mtp/laptop.env; set +a
-~/Dev/qwen36-mtp/scripts/run-laptop.sh
+set -a; source ~/.config/qwen-mtp/laptop.env; set +a
+~/Dev/qwen-mtp/scripts/run-laptop.sh
 ```
 
 Listens on `127.0.0.1:13636`, OpenAI-compatible at `/v1/chat/completions`. Test:
@@ -443,8 +443,8 @@ Description=Qwen3.6-35B-A3B (laptop)
 After=network.target
 
 [Service]
-EnvironmentFile=%h/.config/qwen36-mtp/laptop.env
-ExecStart=%h/Dev/qwen36-mtp/scripts/run-laptop.sh
+EnvironmentFile=%h/.config/qwen-mtp/laptop.env
+ExecStart=%h/Dev/qwen-mtp/scripts/run-laptop.sh
 Restart=on-failure
 
 EOF

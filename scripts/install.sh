@@ -170,7 +170,7 @@ conda_deactivate
 LAUNCH="$REPO_DIR/scripts/run.sh"
 [[ -x "$LAUNCH" ]] || die "missing repo launcher: $LAUNCH (re-clone the repo)"
 
-CONF_DIR="$HOME/.config/qwen36-mtp"
+CONF_DIR="$HOME/.config/qwen-mtp"
 CONF="$CONF_DIR/env"
 mkdir -p "$CONF_DIR"
 log "Writing config: $CONF"
