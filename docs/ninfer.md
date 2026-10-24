@@ -106,7 +106,7 @@ The validated profile uses these settings:
 | Model | Standard Qwen3.8-27B GSQ-RCO IQ3_S, not the heretic variant |
 | Model ID | `qwen3.8-27b` |
 | Per-request context | `229376` tokens (224K) |
-| Shared KV pool | About 474K tokens, sized at startup to leave 1 GiB of free GPU memory |
+| Shared KV pool | `474560` tokens, fixed with `--kv-capacity` |
 | Active generation requests | `2`; further requests wait |
 | Vision | `--vision --vision-residency overlay` |
 | Default reasoning effort | `medium`; overridable per request |
@@ -114,6 +114,13 @@ The validated profile uses these settings:
 | KV format / Gated DeltaNet state | `rk4v4` / FP16 |
 | Prefill | Concurrent prefill, 512-token chunks |
 | Host cache | `2048` MiB |
+
+The pool size is fixed rather than `--kv-capacity auto`. Automatic sizing measures
+free GPU memory at startup, so a container started at boot, before desktop
+programs allocate GPU memory, reserves a larger pool and later leaves less memory
+for the desktop. The fixed value leaves about 1.6 GiB free with a typical desktop
+running and still holds two Pi requests, which together reserve about 451,600
+tokens.
 
 Input, image tokens, reasoning, and generated text share the context window.
 224K is not an additional output allowance. The server has no fixed 16K output
