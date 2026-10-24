@@ -10,6 +10,12 @@ CUDA-toolkit-via-conda, the shared-cudart link fix, separate runtime configs,
 and switchable systemd services. Qwen3.6 and Qwen3.8 share one llama.cpp CUDA
 build but keep their model weights, endpoints, and launch settings separate.
 
+For the separately provisioned NInfer Docker deployment, see
+[Run NInfer](docs/ninfer.md) for startup, connection details, and the validated
+two-request 224K text/image profile. The llama.cpp installers below are unchanged.
+NInfer and the llama.cpp systemd services do not stop each other: stop the active
+backend before starting the other on the same GPU.
+
 ## Why this stack?
 
 | Need | What this repo gives you |
